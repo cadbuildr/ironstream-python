@@ -1,0 +1,24 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "cadbuildr-ironstream"
+version = "0.1.0"
+description = "Python bindings for the IronStream CAD geometry kernel"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "CADbuildr" }]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.urls]
+Homepage = "https://github.com/cadbuildr/ironstream"
+
+[tool.maturin]
+# Compiled extension is imported as `import ironstream`.
+module-name = "ironstream"
