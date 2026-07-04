@@ -1,0 +1,24 @@
+[package]
+name = "ironstream-python"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+description = "Python bindings (PyO3) for the IronStream CAD geometry kernel."
+publish = false
+
+[lib]
+# The compiled extension module is imported as `import ironstream`.
+name = "ironstream"
+crate-type = ["cdylib"]
+
+[dependencies]
+# The pure-Rust IronStream kernel. Renamed to `kernel` so it does not collide
+# with this crate's own lib name (`ironstream`, the Python module).
+#
+# Local path dep for fast iteration while everything is private. Switch to a
+# pinned git dep for CI / distribution:
+#   kernel = { package = "ironstream", git = "ssh://git@github.com/cadbuildr/ironstream.git", rev = "..." }
+kernel = { package = "ironstream", path = "../ironstream/crates/ironstream" }
+
+pyo3 = { version = "0.23", features = ["abi3-py39", "extension-module"] }

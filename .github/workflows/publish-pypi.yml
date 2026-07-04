@@ -1,0 +1,70 @@
+name: Publish to PyPI
+
+# Publishes the binding to PyPI when a version tag (vX.Y.Z) is pushed.
+# Uses PyPI Trusted Publishing (OIDC) — configure the trusted publisher for
+# project "cadbuildr.ironstream" at https://pypi.org/manage/account/publishing/
+# (repo cadbuildr/ironstream-python, workflow publish-pypi.yml, environment pypi).
+#
+# The kernel is a Cargo path dependency (../ironstream). While that repo is
+# private this workflow needs a repo-scoped token in the IRONSTREAM_READ_TOKEN
+# secret to check it out; once ironstream is public the token can be dropped.
+#
+# Wheels only (linux x86_64 manylinux + macOS arm64): no sdist, since an sdist
+# could not build without the kernel sources.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64
+          - os: macos-14
+            target: aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ironstream-python
+      - uses: actions/checkout@v4
+        with:
+          repository: cadbuildr/ironstream
+          token: ${{ secrets.IRONSTREAM_READ_TOKEN || github.token }}
+          path: ironstream
+      - name: Build wheel (maturin)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: ironstream-python
+          target: ${{ matrix.target }}
+          args: --release --out dist
+          manylinux: auto
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}-${{ matrix.target }}
+          path: ironstream-python/dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cadbuildr-ironstream
+    permissions:
+      id-token: write   # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
