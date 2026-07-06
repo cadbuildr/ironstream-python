@@ -175,6 +175,21 @@ impl PySolid {
     fn volume(&self) -> f64 {
         self.inner.volume()
     }
+    /// Stamp analytic provenance: this solid's boundary samples a cylinder of
+    /// `radius` about the axis through `location` along `direction`. Consumed
+    /// by `write_step_analytic` to emit a real CYLINDRICAL_SURFACE face.
+    fn add_cylinder_hint(&mut self, location: &PyPnt, direction: &PyPnt, radius: f64) {
+        use kernel::geom::Surface;
+        use kernel::gp::Ax3;
+        self.inner.add_hint(Surface::Cylinder {
+            placement: Ax3::from_origin_normal(
+                location.inner,
+                direction.inner,
+                Pnt::new(1.0, 0.0, 0.0),
+            ),
+            radius,
+        });
+    }
     fn mesh(&self) -> PyTriMesh {
         PyTriMesh { inner: self.inner.mesh().clone() }
     }
@@ -415,6 +430,13 @@ fn write_step(mesh: &PyTriMesh, name: &str) -> String {
     kp::write_step(&mesh.inner, name)
 }
 
+/// Analytic B-rep STEP: real CYLINDRICAL/SPHERICAL/TOROIDAL/PLANE faces where
+/// the solid's surface provenance allows, faceted fallback elsewhere.
+#[pyfunction]
+fn write_step_analytic(solid: &PySolid, name: &str) -> String {
+    kp::write_step_analytic(&solid.inner, name)
+}
+
 // ---------------------------------------------------------------------------
 // module assembly
 // ---------------------------------------------------------------------------
@@ -484,6 +506,7 @@ fn ironstream(m: &Bound<'_, PyModule>) -> PyResult<()> {
         write_binary_stl,
         write_ascii_stl,
         write_step,
+        write_step_analytic,
     );
 
     // OCCT-style submodules (pyOCCT feel): the same symbols, namespaced.
@@ -526,7 +549,7 @@ fn ironstream(m: &Bound<'_, PyModule>) -> PyResult<()> {
     add_fns!(&algo, fuse, cut, common, fuse_all);
 
     let io = make_submodule(m, "io")?;
-    add_fns!(&io, write_binary_stl, write_ascii_stl, write_step);
+    add_fns!(&io, write_binary_stl, write_ascii_stl, write_step, write_step_analytic);
 
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
