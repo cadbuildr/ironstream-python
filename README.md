@@ -55,6 +55,14 @@ python -c "import ironstream; print(ironstream.make_box(ironstream.Pnt(0,0,0),1,
 
 Build a distributable wheel with `maturin build --release`.
 
+## Releasing
+
+Install from PyPI with `pip install cadbuildr-ironstream` (imported as `import ironstream`).
+To release: bump `version` in both `pyproject.toml` and `Cargo.toml` (and `KERNEL_REF`
+in `.github/workflows/publish-pypi.yml` to the kernel commit you built against),
+then push a `vX.Y.Z` tag. The workflow builds Linux (x86_64, aarch64), macOS (arm64,
+x86_64) and Windows wheels plus an sdist and publishes them via PyPI Trusted Publishing.
+
 ## Pyodide / WebAssembly
 
 The binding also builds as a **Pyodide wheel** (~140 KB) that runs the whole

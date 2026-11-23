@@ -1,16 +1,14 @@
 name: Publish to PyPI
 
-# Publishes the binding to PyPI when a version tag (vX.Y.Z) is pushed.
-# Uses PyPI Trusted Publishing (OIDC) — configure the trusted publisher for
-# project "cadbuildr.ironstream" at https://pypi.org/manage/account/publishing/
-# (repo cadbuildr/ironstream-python, workflow publish-pypi.yml, environment pypi).
+# Publishes the `cadbuildr-ironstream` binding to PyPI when a version tag
+# (vX.Y.Z) is pushed. Uses PyPI Trusted Publishing (OIDC) through the `pypi`
+# environment — no token is stored anywhere. Trusted publisher on PyPI:
+# owner cadbuildr / repo ironstream-python / workflow publish-pypi.yml /
+# environment pypi.
 #
-# The kernel is a Cargo path dependency (../ironstream). While that repo is
-# private this workflow needs a repo-scoped token in the IRONSTREAM_READ_TOKEN
-# secret to check it out; once ironstream is public the token can be dropped.
-#
-# Wheels only (linux x86_64 manylinux + macOS arm64): no sdist, since an sdist
-# could not build without the kernel sources.
+# The kernel is a Cargo path dependency (../ironstream), so every job checks
+# out cadbuildr/ironstream (public) as a sibling at the pinned KERNEL_REF.
+# Bump KERNEL_REF together with the package version.
 
 on:
   push:
@@ -21,15 +19,38 @@ on:
 permissions:
   contents: read
 
+env:
+  KERNEL_REF: 1b9a5777b31a2b0984590d3e820c22aff1e2e749
+
 jobs:
-  build:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches the package version
+        run: |
+          PKG_VERSION="$(python3 -c 'import tomllib; d=tomllib.load(open("pyproject.toml","rb")); print(d["project"]["version"])')"
+          CARGO_VERSION="$(python3 -c 'import tomllib; d=tomllib.load(open("Cargo.toml","rb")); print(d["package"]["version"])')"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "package=$PKG_VERSION cargo=$CARGO_VERSION tag=$TAG_VERSION"
+          if [ "$PKG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::pyproject.toml ($PKG_VERSION) and Cargo.toml ($CARGO_VERSION) versions differ"; exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag $TAG_VERSION does not match package version $PKG_VERSION"; exit 1
+          fi
+
+  wheels:
+    needs: check-version
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64
-          - os: macos-14
-            target: aarch64
+          - { os: ubuntu-latest, target: x86_64, manylinux: auto, smoke: true }
+          - { os: ubuntu-latest, target: aarch64, manylinux: "2_28", smoke: false }
+          - { os: macos-14, target: aarch64, smoke: true }
+          - { os: macos-14, target: x86_64, smoke: false }   # cross-compiled
+          - { os: windows-latest, target: x64, smoke: true }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -38,22 +59,55 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: cadbuildr/ironstream
-          token: ${{ secrets.IRONSTREAM_READ_TOKEN || github.token }}
+          ref: ${{ env.KERNEL_REF }}
           path: ironstream
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Build wheel (maturin)
         uses: PyO3/maturin-action@v1
         with:
           working-directory: ironstream-python
           target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux || 'auto' }}
           args: --release --out dist
-          manylinux: auto
+      - name: Smoke-test the wheel
+        if: matrix.smoke
+        shell: bash
+        run: |
+          python -m pip install --no-index --find-links ironstream-python/dist cadbuildr-ironstream
+          python -c "import ironstream as ist; v = ist.make_box(ist.Pnt(0,0,0), 2, 3, 4).volume(); assert abs(v - 24) < 1e-9, v; print('ok', v)"
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.os }}-${{ matrix.target }}
           path: ironstream-python/dist/
 
+  sdist:
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ironstream-python
+      - uses: actions/checkout@v4
+        with:
+          repository: cadbuildr/ironstream
+          ref: ${{ env.KERNEL_REF }}
+          path: ironstream
+      - name: Build sdist (maturin vendors the kernel path dependency)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: ironstream-python
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-sdist
+          path: ironstream-python/dist/
+
   publish:
-    needs: build
+    needs: [wheels, sdist]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -66,5 +120,6 @@ jobs:
           pattern: dist-*
           merge-multiple: true
           path: dist/
+      - run: ls -l dist/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
