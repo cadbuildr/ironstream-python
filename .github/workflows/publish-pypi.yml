@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  KERNEL_REF: b7c44b72a1ec3902cf116b09c2b52071730b6f5b
+  KERNEL_REF: a10d252b0ed72b161bf18602ba1d0c12db924bb3
 
 jobs:
   check-version:
