@@ -270,14 +270,21 @@ impl PyBBox {
 struct PyMeshParams {
     circle_segments: usize,
     lat_segments: usize,
+    min_edge: f64,
 }
 
 #[pymethods]
 impl PyMeshParams {
+    /// `min_edge`: shortest facet edge along a circle in model units, so small
+    /// circles get fewer facets (0 = always `circle_segments`).
     #[new]
-    #[pyo3(signature = (circle_segments = 64, lat_segments = 32))]
-    fn new(circle_segments: usize, lat_segments: usize) -> Self {
-        Self { circle_segments, lat_segments }
+    #[pyo3(signature = (circle_segments = 64, lat_segments = 32, min_edge = 0.08))]
+    fn new(circle_segments: usize, lat_segments: usize, min_edge: f64) -> Self {
+        Self { circle_segments, lat_segments, min_edge }
+    }
+    #[getter]
+    fn min_edge(&self) -> f64 {
+        self.min_edge
     }
     #[getter]
     fn circle_segments(&self) -> usize {
@@ -291,7 +298,11 @@ impl PyMeshParams {
 
 impl PyMeshParams {
     fn to_kernel(&self) -> MeshParams {
-        MeshParams { circle_segments: self.circle_segments, lat_segments: self.lat_segments }
+        MeshParams {
+            circle_segments: self.circle_segments,
+            lat_segments: self.lat_segments,
+            min_edge: self.min_edge,
+        }
     }
 }
 
